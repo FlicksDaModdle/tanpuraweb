@@ -1,0 +1,442 @@
+:root {
+  --wood-dark: #1c130d;
+  --wood: #2a1d14;
+  --wood-panel: #33241a;
+  --wood-line: #4a3524;
+  --brass: #cf9a4f;
+  --brass-dim: #8a6a3f;
+  --cream: #f0e4cf;
+  --cream-dim: #b8a488;
+  --maroon: #7d2f28;
+  --maroon-bright: #b2453a;
+  --amber-glow: #e8a33d;
+
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", "Noto Serif Devanagari", serif;
+  --font-body: -apple-system, "Segoe UI", "Noto Sans Devanagari", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(ellipse at 50% -10%, #3a281a 0%, var(--wood-dark) 65%);
+  color: var(--cream);
+  font-family: var(--font-body);
+  min-height: 100vh;
+}
+
+/* Every size in this file is in rem, so scaling the root font-size scales
+   the whole UI proportionally — spacing, text, panels, everything — down
+   for narrow phones and back up to the original desktop size once there's
+   room, without needing a separate override for each element at each
+   breakpoint. 16px (the original fixed size this was designed at) is the
+   ceiling; below ~400px-wide viewports it eases down smoothly, bottoming
+   out at 14px for the narrowest phones (~340px, e.g. an SE) so nothing
+   gets uncomfortably small. Fixed-px things like touch targets (arrow
+   buttons, slider thumbs) don't reference rem, so they stay full-size at
+   any scale — only spacing/typography shrinks. */
+html {
+  font-size: clamp(14px, 2.5vw + 6px, 16px);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- loading ---------- */
+.loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+.loading__mark {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--brass);
+  letter-spacing: 0.05em;
+}
+.loading__label {
+  color: var(--cream-dim);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- layout ---------- */
+#app {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem calc(3rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.masthead {
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+.masthead__mark {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  color: var(--brass);
+}
+.masthead__sub {
+  font-size: 0.7rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  margin-top: 0.15rem;
+}
+
+/* ---------- key card ---------- */
+.key-card {
+  background: linear-gradient(180deg, var(--wood-panel), var(--wood));
+  border: 1px solid var(--wood-line);
+  border-radius: 18px;
+  padding: 1.25rem 1.5rem 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.key-card__row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.arrow-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--wood-line);
+  background: linear-gradient(180deg, #4a3524, #2a1d14);
+  color: var(--brass);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.08s ease, box-shadow 0.15s ease;
+}
+.arrow-btn:hover { box-shadow: 0 0 0 4px rgba(207,154,79,0.12); }
+.arrow-btn:active { transform: scale(0.92); }
+.arrow-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.arrow-btn:disabled:hover { box-shadow: none; }
+
+.key-display {
+  flex: 1;
+  text-align: center;
+  background: #100b07;
+  border: 1px solid #000;
+  border-radius: 10px;
+  padding: 0.6rem 0;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--amber-glow);
+  text-shadow: 0 0 12px rgba(232,163,61,0.55);
+  letter-spacing: 0.05em;
+}
+.key-display__oct {
+  font-size: 1.1rem;
+  vertical-align: sub;
+  margin-left: 0.15rem;
+  color: var(--brass-dim);
+}
+
+.key-card__tune { gap: 0.75rem; }
+.tune-icon { color: var(--brass-dim); font-size: 1.1rem; width: 1rem; text-align: center; }
+.tune-readout {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  width: 3.2rem;
+  text-align: right;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+.tune-readout--centered { color: #7fbf6a; }
+.tune-readout--flat { color: #e6c452; }
+.tune-readout--sharp { color: #57c7d4; }
+
+.key-card__vary { justify-content: center; }
+.vary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  cursor: pointer;
+}
+.vary-toggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px;
+  height: 19px;
+  border-radius: 10px;
+  background: var(--wood-line);
+  border: 1px solid #000;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease;
+}
+.vary-toggle input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--cream-dim);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.vary-toggle input:checked {
+  background: var(--brass-dim);
+}
+.vary-toggle input:checked::before {
+  transform: translateX(15px);
+  background: var(--amber-glow);
+}
+
+.key-card__tempo { gap: 0.75rem; }
+.key-card__tempo label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  width: 3rem;
+}
+.tempo-label {
+  font-variant-numeric: tabular-nums;
+  color: var(--brass);
+  font-size: 0.85rem;
+  width: 2.6rem;
+  text-align: right;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  background: var(--wood-line);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f2d9a8, var(--brass) 60%, var(--brass-dim));
+  border: 1px solid #6b4e28;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f2d9a8, var(--brass) 60%, var(--brass-dim));
+  border: 1px solid #6b4e28;
+  cursor: pointer;
+}
+
+/* ---------- tanpura panels ---------- */
+.tanpura-panel {
+  background: linear-gradient(180deg, var(--wood-panel), var(--wood));
+  border: 1px solid var(--wood-line);
+  border-radius: 18px;
+  padding: 1.25rem 1.4rem 1.5rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  position: relative;
+  overflow: hidden;
+}
+.tanpura-panel::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--wood-line), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.tanpura-panel.is-playing::before {
+  opacity: 1;
+  background: linear-gradient(90deg, transparent, var(--amber-glow), transparent);
+}
+
+.tanpura-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+.tanpura-panel__head h2 {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  margin: 0;
+  color: var(--cream);
+  font-weight: normal;
+}
+.alt-tag {
+  font-family: var(--font-body);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--wood-dark);
+  background: var(--brass);
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.set-select {
+  background: var(--wood-dark);
+  color: var(--cream-dim);
+  border: 1px solid var(--wood-line);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: var(--font-body);
+}
+
+.active-sample {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  letter-spacing: 0.03em;
+  color: var(--wood-line);
+  text-align: right;
+  margin: -0.6rem 0 0.7rem;
+  text-transform: lowercase;
+}
+
+/* string resonance visualization */
+.string-viz {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: rgba(0,0,0,0.18);
+  border-radius: 10px;
+}
+.string-viz__string {
+  height: 2px;
+  background: var(--wood-line);
+  position: relative;
+  border-radius: 1px;
+}
+.string-viz__string span {
+  position: absolute;
+  right: 0;
+  top: -0.85rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  opacity: 0.7;
+}
+.string-viz__string.pulse {
+  animation: stringPulse 1.1s ease-out;
+}
+@keyframes stringPulse {
+  0%   { background: var(--amber-glow); box-shadow: 0 0 10px 1px rgba(232,163,61,0.8); transform: scaleY(2.5); }
+  100% { background: var(--wood-line); box-shadow: none; transform: scaleY(1); }
+}
+
+/* note selector row */
+.note-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+  flex-wrap: wrap;
+}
+.note-btn {
+  flex: 1;
+  min-width: 3.4rem;
+  padding: 0.6rem 0.4rem;
+  border-radius: 9px;
+  border: 1px solid var(--wood-line);
+  background: #241a12;
+  color: var(--cream-dim);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.note-btn--off.active {
+  background: var(--maroon);
+  border-color: var(--maroon-bright);
+  color: var(--cream);
+}
+.note-btn.active:not(.note-btn--off) {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--wood-dark);
+  font-weight: 600;
+}
+.note-btn:hover:not(.active) { border-color: var(--brass-dim); color: var(--cream); }
+
+/* faders */
+.fader-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.fader {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.fader__label {
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  width: 4.6rem;
+  flex-shrink: 0;
+}
+
+.foot-note {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--brass-dim);
+  letter-spacing: 0.02em;
+  padding-top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .string-viz__string.pulse { animation: none; }
+  .arrow-btn, .note-btn { transition: none; }
+}
+
+/* focus visibility */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--amber-glow);
+  outline-offset: 2px;
+}
+
+@media (max-width: 380px) {
+  #app { padding: 1.5rem 0.9rem 2.5rem; }
+  .note-btn { font-size: 0.78rem; padding: 0.55rem 0.3rem; }
+}
+
+/* Rotated phone: width is generous but height is tight (often <420px),
+   so the constraint here is vertical, not the font-scale rule above. */
+@media (max-height: 480px) and (orientation: landscape) {
+  #app { padding-top: 1rem; gap: 1rem; }
+  .masthead { margin-bottom: 0; }
+  .masthead__mark { font-size: 1.5rem; }
+  .masthead__sub { display: none; }
+  .key-card, .tanpura-panel { padding-top: 0.9rem; padding-bottom: 0.9rem; gap: 0.75rem; }
+}

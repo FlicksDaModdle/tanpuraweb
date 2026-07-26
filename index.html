@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Tanpura</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="loading" class="loading">
+  <div class="loading__mark">तानपुरा</div>
+  <div class="loading__label">tuning strings…</div>
+</div>
+
+<div id="app" class="hidden">
+
+  <header class="masthead">
+    <div class="masthead__mark">तानपुरा</div>
+    <div class="masthead__sub">tanpura</div>
+  </header>
+
+  <section class="key-card">
+    <div class="key-card__row">
+      <button id="keyDown" class="arrow-btn" aria-label="Lower key">−</button>
+      <div class="key-display">
+        <span id="keyNote">C#</span><span id="keyOct" class="key-display__oct">3</span>
+      </div>
+      <button id="keyUp" class="arrow-btn" aria-label="Raise key">+</button>
+    </div>
+    <div class="key-card__row key-card__tune">
+      <span class="tune-icon">♭</span>
+      <input id="fineTune" type="range" min="-50" max="50" value="0" step="1" />
+      <span class="tune-icon">♯</span>
+      <span id="fineTuneLabel" class="tune-readout tune-readout--centered">0.00</span>
+    </div>
+    <div class="key-card__row key-card__tempo">
+      <label for="tempo">bpm</label>
+      <input id="tempo" type="range" min="40" max="200" value="105" step="1" />
+      <span id="tempoLabel" class="tempo-label">105</span>
+    </div>
+    <div class="key-card__row key-card__vary">
+      <label class="vary-toggle">
+        <input id="varyTempo" type="checkbox" checked />
+        <span>vary tempos</span>
+      </label>
+    </div>
+    <div class="key-card__row key-card__alt">
+      <label class="vary-toggle">
+        <input id="altVoice" type="checkbox" />
+        <span>alt tanpura (male voice)</span>
+      </label>
+    </div>
+  </section>
+
+  <section id="tanpura1" class="tanpura-panel">
+    <div class="tanpura-panel__head">
+      <h2>Tanpura I</h2>
+    </div>
+    <div id="activeSample1" class="active-sample"></div>
+
+    <div id="strings1" class="string-viz">
+      <div class="string-viz__string" data-string="second"><span>2nd</span></div>
+      <div class="string-viz__string" data-string="sa"><span>Sa</span></div>
+      <div class="string-viz__string" data-string="sa"><span>Sa</span></div>
+      <div class="string-viz__string" data-string="kharaj"><span>Kharaj</span></div>
+    </div>
+
+    <div id="notes1" class="note-row"></div>
+
+    <div class="fader-row">
+      <div class="fader">
+        <span class="fader__label">volume</span>
+        <input id="vol1" type="range" min="0" max="1.2" value="0.8" step="0.01" />
+      </div>
+      <div class="fader">
+        <span class="fader__label">L&nbsp;&nbsp;&nbsp;pan&nbsp;&nbsp;&nbsp;R</span>
+        <input id="pan1" type="range" min="-1" max="1" value="0" step="0.01" />
+      </div>
+    </div>
+  </section>
+
+  <section id="tanpura2" class="tanpura-panel">
+    <div class="tanpura-panel__head">
+      <h2>Tanpura II</h2>
+    </div>
+    <div id="activeSample2" class="active-sample"></div>
+
+    <div id="strings2" class="string-viz">
+      <div class="string-viz__string" data-string="second"><span>2nd</span></div>
+      <div class="string-viz__string" data-string="sa"><span>Sa</span></div>
+      <div class="string-viz__string" data-string="sa"><span>Sa</span></div>
+      <div class="string-viz__string" data-string="kharaj"><span>Kharaj</span></div>
+    </div>
+
+    <div id="notes2" class="note-row"></div>
+
+    <div class="fader-row">
+      <div class="fader">
+        <span class="fader__label">volume</span>
+        <input id="vol2" type="range" min="0" max="1.2" value="0.8" step="0.01" />
+      </div>
+      <div class="fader">
+        <span class="fader__label">L&nbsp;&nbsp;&nbsp;pan&nbsp;&nbsp;&nbsp;R</span>
+        <input id="pan2" type="range" min="-1" max="1" value="0" step="0.01" />
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot-note">tap anywhere once to enable audio, then choose a note on either tanpura to begin</footer>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
