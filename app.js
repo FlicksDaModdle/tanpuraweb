@@ -648,6 +648,18 @@ class TanpuraVoice {
 // "playback" asks for larger output buffers than the default
 // "interactive". A drone doesn't need low latency, and small buffers are
 // what underrun (crackle/drop out) on Bluetooth and Android audio paths.
+//
+// On iPhone/iPad, Safari otherwise treats Web Audio as "ambient" sound: it
+// is muted entirely by the ring/silent switch (even when playing to a
+// Bluetooth speaker) and stops when the screen locks. Declaring the page
+// as media playback (Safari 16.4+) makes it behave like a music player.
+if (navigator.audioSession) {
+  try {
+    navigator.audioSession.type = "playback";
+  } catch (err) {
+    console.warn("Could not set audio session type:", err);
+  }
+}
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 try {
@@ -990,6 +1002,18 @@ function renderNoteButtons(panel, voice) {
 
 function setPanelPlayingState(panel, playing) {
   panel.root.classList.toggle("is-playing", playing);
+  updateAudioBlockedNotice();
+}
+
+// The panels look identical whether or not sound is actually coming out,
+// so when a tanpura is "playing" but the browser has audio suspended (no
+// unlocking tap yet, an interruption, a speaker connecting/disconnecting)
+// say so instead of silently showing pulsing strings.
+function updateAudioBlockedNotice() {
+  const notice = document.getElementById("audioBlocked");
+  if (!notice) return;
+  const anyPlaying = els.panels.some((p) => p.root.classList.contains("is-playing"));
+  notice.classList.toggle("hidden", !(anyPlaying && audioCtx.state !== "running"));
 }
 
 function pulseString(panel, noteName) {
@@ -1081,7 +1105,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // Panels restored as "was playing" from last session can't actually
   // start until the AudioContext is running. Kick them off as soon as it
   // is — whether that's from this gesture or init() finishing afterwards.
-  audioCtx.addEventListener("statechange", flushPendingAutoStart);
+  audioCtx.addEventListener("statechange", () => {
+    flushPendingAutoStart();
+    updateAudioBlockedNotice();
+  });
   // Not just once: the context can be suspended/interrupted again later,
   // e.g. when a Bluetooth speaker connects, disconnects or the output
   // device changes. Any later tap brings it back.
@@ -1091,6 +1118,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
   document.addEventListener("click", resumeIfNeeded);
+  document.addEventListener("touchend", resumeIfNeeded);
   document.addEventListener("keydown", resumeIfNeeded);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) resumeIfNeeded();
