@@ -427,7 +427,12 @@ class TanpuraVoice {
     this._running = false;
     this._nextPluckTime = 0;
     this._seqIndex = 0;
-    this._lookahead = 0.1; // seconds, how far ahead we schedule
+    // How far ahead plucks are scheduled. Short while the page is visible
+    // so Off/tuning feel immediate; much longer while it's hidden, where
+    // browsers throttle timers to ~1/s (e.g. a phone with its screen off
+    // playing into a Bluetooth speaker) and a short lookahead would run dry.
+    this._lookahead = 0.1;
+    this._hiddenLookahead = 1.5;
     this._schedulerTimer = null;
     this._activeSources = [];
     this.onPluck = null; // callback(noteName) for UI pulse
@@ -577,14 +582,18 @@ class TanpuraVoice {
     envelope.connect(this.gainNode);
 
     src.start(when);
-    const entry = { source: src, extraFactor };
+    const entry = { source: src, extraFactor, when };
     this._activeSources.push(entry);
     src.onended = () => {
       const idx = this._activeSources.indexOf(entry);
       if (idx >= 0) this._activeSources.splice(idx, 1);
     };
     if (this.onPluck) {
-      const delayMs = Math.max(0, (when - this.ctx.currentTime) * 1000);
+      // Flash the string when the pluck is actually *heard*, not when it
+      // leaves Web Audio: Bluetooth output adds ~150-300ms of latency,
+      // which made the string pulses run visibly ahead of the sound.
+      const latency = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+      const delayMs = Math.max(0, (when + latency - this.ctx.currentTime) * 1000);
       setTimeout(() => this.onPluck(noteName), delayMs);
     }
   }
@@ -601,14 +610,27 @@ class TanpuraVoice {
     this._running = false;
     if (this._schedulerTimer) clearTimeout(this._schedulerTimer);
     this._schedulerTimer = null;
-    // let currently-sounding plucks ring out naturally; just stop scheduling new ones
+    // Let currently-sounding plucks ring out naturally, but cancel any
+    // that were scheduled ahead and haven't started yet.
+    const now = this.ctx.currentTime;
+    this._activeSources.forEach(({ source, when }) => {
+      if (when > now) source.stop();
+    });
   }
 
   _tick() {
     if (!this._running) return;
     const sequence = buildSequence(this.secondNote && this.noteSources[this.secondNote] ? this.secondNote : null);
+    const now = this.ctx.currentTime;
 
-    while (this._nextPluckTime < this.ctx.currentTime + this._lookahead) {
+    // If the timer was starved for longer than the lookahead (background
+    // tab, busy main thread), the missed plucks would all be scheduled in
+    // the past and fire at once as a burst. Skip them and pick the cycle
+    // back up from now instead.
+    if (this._nextPluckTime < now) this._nextPluckTime = now + 0.02;
+
+    const lookahead = document.hidden ? this._hiddenLookahead : this._lookahead;
+    while (this._nextPluckTime < now + lookahead) {
       const note = sequence[this._seqIndex % sequence.length];
       if (note) this._pluck(note, this._nextPluckTime);
       const jitter = this.varyTempo ? 1 + (Math.random() * 2 - 1) * 0.045 : 1;
@@ -623,10 +645,32 @@ class TanpuraVoice {
 // App wiring
 // ============================================================================
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// "playback" asks for larger output buffers than the default
+// "interactive". A drone doesn't need low latency, and small buffers are
+// what underrun (crackle/drop out) on Bluetooth and Android audio paths.
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+try {
+  audioCtx = new AudioContextClass({ latencyHint: "playback" });
+} catch (err) {
+  audioCtx = new AudioContextClass();
+}
 const masterGain = audioCtx.createGain();
 masterGain.gain.value = 0.9;
-masterGain.connect(audioCtx.destination);
+
+// Two tanpuras with overlapping, long-decaying strings sum past full scale
+// (peaks ~1.0 at default volumes, ~1.5 with both faders up), i.e. hard
+// digital clipping. Bluetooth codecs and small speakers' own DSP handle
+// that especially badly. A fast limiter just below 0 dBFS keeps the mix
+// clean; at normal levels it barely engages.
+const limiter = audioCtx.createDynamicsCompressor();
+limiter.threshold.value = -6;
+limiter.knee.value = 4;
+limiter.ratio.value = 20;
+limiter.attack.value = 0.002;
+limiter.release.value = 0.25;
+masterGain.connect(limiter);
+limiter.connect(audioCtx.destination);
 
 const library = new SampleLibrary(audioCtx);
 
@@ -1038,13 +1082,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // start until the AudioContext is running. Kick them off as soon as it
   // is — whether that's from this gesture or init() finishing afterwards.
   audioCtx.addEventListener("statechange", flushPendingAutoStart);
-  const resumeOnce = () => {
-    if (audioCtx.state === "suspended") audioCtx.resume();
-    document.removeEventListener("click", resumeOnce);
-    document.removeEventListener("keydown", resumeOnce);
+  // Not just once: the context can be suspended/interrupted again later,
+  // e.g. when a Bluetooth speaker connects, disconnects or the output
+  // device changes. Any later tap brings it back.
+  const resumeIfNeeded = () => {
+    if (audioCtx.state !== "running" && audioCtx.state !== "closed") {
+      audioCtx.resume().catch(() => {});
+    }
   };
-  document.addEventListener("click", resumeOnce);
-  document.addEventListener("keydown", resumeOnce);
+  document.addEventListener("click", resumeIfNeeded);
+  document.addEventListener("keydown", resumeIfNeeded);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resumeIfNeeded();
+  });
   init().catch(showLoadError);
 });
 
