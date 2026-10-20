@@ -4,8 +4,9 @@ A two-voice tanpura drone player using your own recorded samples
 (C#3, C#3 Alt, G#3 — Kharaj, Sa, Pa, Ni).
 
 ## Try it instantly (no install)
-Just double-click `index.html`, or run a tiny local server and open it —
-either works, but a local server avoids browser file:// restrictions:
+Run a tiny local server and open it. (Double-clicking `index.html` won't
+work in most browsers: they block loading the audio samples from
+file:// URLs, and the app will say so on its loading screen.)
 
 ```
 npx serve .

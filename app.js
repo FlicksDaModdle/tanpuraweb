@@ -164,6 +164,16 @@ function wsolaTimeStretch(channelData, stretchFactor, sampleRate) {
   const synthesisHop = 1024; // 75% overlap
   const searchRange = 600; // samples to search around the ideal position for best phase match
   const overlap = frameSize - synthesisHop;
+  // The phase-match search is the expensive part (it used to take several
+  // seconds per buffer). Two things keep it fast without changing what it
+  // looks for:
+  //   - candidate energies come from a running sum of squares, so each
+  //     candidate's normalization is O(1) instead of another O(overlap) pass;
+  //   - a coarse pass scores every COARSE_STEP-th candidate on every
+  //     COARSE_STEP-th sample, then a full-resolution pass refines around
+  //     the coarse winner. The correlation peak of a drone string is
+  //     hundreds of samples wide, far wider than the coarse step.
+  const COARSE_STEP = 4;
 
   const inputLen = channelData.length;
   const outputLen = Math.max(1, Math.round(inputLen * stretchFactor));
@@ -173,19 +183,21 @@ function wsolaTimeStretch(channelData, stretchFactor, sampleRate) {
   const output = new Float32Array(outputLen + frameSize);
   const weight = new Float32Array(outputLen + frameSize);
 
+  // energyPrefix[i] = sum of channelData[0..i-1]^2 (Float64 to keep the
+  // running sum precise over a multi-second buffer).
+  const energyPrefix = new Float64Array(inputLen + 1);
+  for (let i = 0; i < inputLen; i++) energyPrefix[i + 1] = energyPrefix[i] + channelData[i] * channelData[i];
+  const norm = (start) => Math.sqrt(Math.max(0, energyPrefix[start + overlap] - energyPrefix[start])) + 1e-9;
+
   let inPos = 0;
   let outPos = 0;
   let prevTail = null; // reference segment the next grain should phase-continue from
+  let naturalPos = 0; // where prevTail itself starts in the input
 
-  const dot = (a, aStart, b, len) => {
+  const dot = (aStart, step) => {
     let s = 0;
-    for (let i = 0; i < len; i++) s += a[aStart + i] * b[i];
+    for (let i = 0; i < overlap; i += step) s += channelData[aStart + i] * prevTail[i];
     return s;
-  };
-  const norm = (a, aStart, len) => {
-    let s = 0;
-    for (let i = 0; i < len; i++) s += a[aStart + i] * a[aStart + i];
-    return Math.sqrt(s) + 1e-9;
   };
 
   while (outPos < outputLen && inPos + frameSize <= inputLen) {
@@ -196,9 +208,24 @@ function wsolaTimeStretch(channelData, stretchFactor, sampleRate) {
       const hi = Math.min(inputLen - frameSize, inPos + searchRange);
       let bestScore = -Infinity;
       let bestPos = inPos;
-      const refNorm = norm(prevTail, 0, overlap);
-      for (let cand = lo; cand <= hi; cand++) {
-        const score = dot(channelData, cand, prevTail, overlap) / norm(channelData, cand, overlap) / refNorm;
+      for (let cand = lo; cand <= hi; cand += COARSE_STEP) {
+        const score = dot(cand, COARSE_STEP) / norm(cand);
+        if (score > bestScore) {
+          bestScore = score;
+          bestPos = cand;
+        }
+      }
+      const fineLo = Math.max(lo, bestPos - COARSE_STEP + 1);
+      const fineHi = Math.min(hi, bestPos + COARSE_STEP - 1);
+      // Also always score the natural continuation of the previous grain
+      // exactly — on a steady tone it is usually the best match, and the
+      // coarse lattice can step right over it.
+      const candidates = [];
+      for (let cand = fineLo; cand <= fineHi; cand++) candidates.push(cand);
+      if (naturalPos >= lo && naturalPos <= hi) candidates.push(naturalPos);
+      bestScore = -Infinity;
+      for (const cand of candidates) {
+        const score = dot(cand, 1) / norm(cand);
         if (score > bestScore) {
           bestScore = score;
           bestPos = cand;
@@ -214,7 +241,8 @@ function wsolaTimeStretch(channelData, stretchFactor, sampleRate) {
       weight[outIdx] += w;
     }
 
-    prevTail = channelData.slice(actualPos + synthesisHop, actualPos + synthesisHop + overlap);
+    naturalPos = actualPos + synthesisHop;
+    prevTail = channelData.slice(naturalPos, naturalPos + overlap);
     inPos = actualPos + analysisHop;
     outPos += synthesisHop;
   }
@@ -264,18 +292,26 @@ function padOrTrim(arr, targetLength) {
 class SampleLibrary {
   constructor(audioCtx) {
     this.ctx = audioCtx;
-    this.cache = new Map(); // url -> AudioBuffer
+    this.cache = new Map(); // url -> Promise<AudioBuffer>
     this.derivedCache = new Map(); // "url::semitones" -> Promise<AudioBuffer>
     this._fallbackNiPromise = null;
   }
 
-  async load(url) {
-    if (this.cache.has(url)) return this.cache.get(url);
-    const res = await fetch(url);
-    const arr = await res.arrayBuffer();
-    const buf = await this.ctx.decodeAudioData(arr);
-    this.cache.set(url, buf);
-    return buf;
+  // Caches the in-flight promise, not just the finished buffer, so that
+  // concurrent requests for the same file (e.g. C#3's Pa, wanted by both
+  // the C#3 set and G#3's derivePa during prewarm) share one fetch/decode.
+  load(url) {
+    if (!this.cache.has(url)) {
+      const promise = (async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to load ${url} (HTTP ${res.status})`);
+        return this.ctx.decodeAudioData(await res.arrayBuffer());
+      })();
+      // Don't cache failures — let a later call retry.
+      promise.catch(() => this.cache.delete(url));
+      this.cache.set(url, promise);
+    }
+    return this.cache.get(url);
   }
 
   // Derives a pitch-shifted, duration-preserved buffer from an already-
@@ -399,14 +435,14 @@ class TanpuraVoice {
 
   async setSampleSet(setKey) {
     this.setNode = setKey;
-    this.buffers = await this.library.loadSet(setKey);
+    const buffers = await this.library.loadSet(setKey);
 
     // noteSources maps a playable note name -> { buffer, extraSemitones }.
     // "extraSemitones" lets us derive notes we don't have a direct
     // recording for (Ma = the Pa recording, pitched down two semitones).
     const noteSources = {
-      kharaj: { buffer: this.buffers.kharaj, extraSemitones: 0 },
-      sa: { buffer: this.buffers.sa, extraSemitones: 0 },
+      kharaj: { buffer: buffers.kharaj, extraSemitones: 0 },
+      sa: { buffer: buffers.sa, extraSemitones: 0 },
     };
 
     // paBuffer/paUrl feed the Ma-from-Pa derivation just below. Sets that
@@ -414,7 +450,7 @@ class TanpuraVoice {
     // derive one from another set's Pa via derivePa — same pitch-shift
     // method, just at a different (larger) semitone offset than the -2
     // used for Ma.
-    let paBuffer = this.buffers.pa;
+    let paBuffer = buffers.pa;
     let paUrl = SAMPLE_SETS[setKey].files.pa;
 
     const deriveSpec = SAMPLE_SETS[setKey].derivePa;
@@ -433,11 +469,19 @@ class TanpuraVoice {
       const maBuffer = await this.library.getPitchShifted(paUrl, paBuffer, -2);
       noteSources.ma = { buffer: maBuffer, extraSemitones: 0 };
     }
-    if (this.buffers.ni) {
-      noteSources.ni = { buffer: this.buffers.ni, extraSemitones: 0 };
+    if (buffers.ni) {
+      noteSources.ni = { buffer: buffers.ni, extraSemitones: 0 };
     } else {
       noteSources.ni = { buffer: await this.library.loadFallbackNi(), extraSemitones: 0 };
     }
+
+    // A newer setSampleSet() call may have started while this one was
+    // awaiting (e.g. the key crossed E3/F3 and straight back while the
+    // target set was still being derived in the background). Don't let
+    // this stale result overwrite the newer one — that would leave the
+    // voice playing one register's samples tuned for the other's anchor.
+    if (this.setNode !== setKey) return;
+    this.buffers = buffers;
     this.noteSources = noteSources;
 
     // if current secondNote isn't available in the new set, fall back
@@ -600,6 +644,11 @@ let altVoice = false; // global "alt tanpura" toggle — same wav variant for bo
 // AudioContext (see resumeOnce below). Populated by setupPanel().
 const pendingAutoStart = [];
 
+function flushPendingAutoStart() {
+  if (audioCtx.state !== "running") return;
+  pendingAutoStart.splice(0).forEach(({ voice }) => voice.start());
+}
+
 // Each voice tracks which sample set the user *prefers* (chosen via the
 // dropdown, e.g. "C#3" vs "C#3 Alt") independently of which set is
 // actually sounding right now. The active set is decided automatically
@@ -613,7 +662,7 @@ const pendingAutoStart = [];
 async function applyTuningToVoices() {
   await Promise.all(
     [voice1, voice2].map(async (voice) => {
-      const anchor = nearestAnchor(baseMidi);
+      let anchor = nearestAnchor(baseMidi);
       const desiredKey = anchor.keys.includes(voice.preferredSetKey)
         ? voice.preferredSetKey
         : anchor.keys[0];
@@ -623,7 +672,12 @@ async function applyTuningToVoices() {
         // microtask (cache hit) rather than waiting on a fetch/decode —
         // the register change is audible on the very next scheduled pluck.
         await voice.setSampleSet(desiredKey);
+        // Superseded by a newer call while waiting — that call owns the
+        // voice's set and tuning now.
+        if (voice.setNode !== desiredKey) return;
         if (voice.panel) renderNoteButtons(voice.panel, voice);
+        // The key may also have moved within this register meanwhile.
+        anchor = nearestAnchor(baseMidi);
       }
 
       const shift = baseMidi - anchor.midi;
@@ -966,6 +1020,10 @@ async function init() {
   document.getElementById("loading").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
 
+  // Audio may already be unlocked by now — the user clicked during the
+  // loading screen, or the host (e.g. Electron) doesn't require a gesture.
+  flushPendingAutoStart();
+
   // Warm the remaining sample sets in the background, without blocking
   // the UI — already-warmed entries (initialKey, fallback Ni) are cached
   // and skipped, so this only does the actual remaining work.
@@ -976,15 +1034,31 @@ window.addEventListener("beforeunload", () => saveSettings());
 
 document.addEventListener("DOMContentLoaded", () => {
   // Web Audio requires a user gesture to resume in most browsers.
+  // Panels restored as "was playing" from last session can't actually
+  // start until the AudioContext is running. Kick them off as soon as it
+  // is — whether that's from this gesture or init() finishing afterwards.
+  audioCtx.addEventListener("statechange", flushPendingAutoStart);
   const resumeOnce = () => {
     if (audioCtx.state === "suspended") audioCtx.resume();
-    // Panels restored as "was playing" from last session couldn't
-    // actually start any earlier than this — there's no sound until the
-    // AudioContext resumes. Kick them off now, right on the gesture that
-    // unlocks audio, so playback resumes as soon as possible.
-    pendingAutoStart.splice(0).forEach(({ voice }) => voice.start());
     document.removeEventListener("click", resumeOnce);
+    document.removeEventListener("keydown", resumeOnce);
   };
   document.addEventListener("click", resumeOnce);
-  init();
+  document.addEventListener("keydown", resumeOnce);
+  init().catch(showLoadError);
 });
+
+// Without this, any startup failure left the "tuning strings…" screen up
+// forever with no explanation. The most common cause is opening
+// index.html straight from disk: browsers block fetch() of file:// URLs,
+// so the samples can't load.
+function showLoadError(err) {
+  console.error("Tanpura failed to start:", err);
+  const label = document.querySelector("#loading .loading__label");
+  if (!label) return;
+  label.textContent =
+    location.protocol === "file:"
+      ? "couldn't load the samples — browsers block audio files opened straight from disk. run a local server (e.g. npx serve .) and open the http:// address instead."
+      : "couldn't load the samples — check your connection and reload.";
+  label.classList.add("loading__label--error");
+}

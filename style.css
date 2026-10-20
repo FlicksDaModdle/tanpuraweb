@@ -63,6 +63,15 @@ html {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.loading__label--error {
+  max-width: 32ch;
+  padding: 0 1.25rem;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  color: var(--cream);
+}
 
 /* ---------- layout ---------- */
 #app {
